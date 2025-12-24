@@ -3,19 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>变量管理中心 - 风控决策引擎</title>
+    <title>决策流编排 - 风控决策引擎 (全功能版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
-        
-        /* Sidebar Active State */
-        .sidebar-active { @apply bg-blue-50 text-blue-600 border-r-2 border-blue-600; }
-        .card-hover { @apply hover:shadow-md hover:border-blue-200 transition duration-200; }
         
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -23,443 +19,597 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Syntax Highlighting Mock */
-        .token-keyword { color: #c678dd; }
-        .token-fn { color: #61afef; }
-        .token-str { color: #98c379; }
-        .token-comment { color: #7f848e; font-style: italic; }
-        .token-num { color: #d19a66; }
+        /* Canvas Grid */
+        .canvas-bg {
+            background-color: #f1f5f9;
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
 
-        /* Animation */
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        /* Nodes */
+        .flow-node {
+            transition: box-shadow 0.2s, border-color 0.2s;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            user-select: none;
+            background-color: white;
+        }
+        .flow-node:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-color: #3b82f6;
+        }
+        .flow-node.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+        }
+        .flow-node.dragging {
+            opacity: 0.9;
+            cursor: grabbing;
+            z-index: 50;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .form-input { 
+            @apply w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition; 
+        }
+        
+        /* Terminal / Bottom Panel Styles */
+        .terminal-panel {
+            transition: height 0.3s ease-in-out;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
 
         // --- Icons ---
-        const Icon = ({ children, size = 18, className = "" }) => (
+        const IconBase = ({ children, size = 18, className = "" }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
-        // 使用简单的 SVG 路径以确保兼容性
         const Icons = {
-            Server: <Icon><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></Icon>,
-            Database: <Icon><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></Icon>,
-            Settings: <Icon><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>,
-            Zap: <Icon><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></Icon>,
-            Globe: <Icon><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></Icon>,
-            Function: <Icon><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"/><path d="M9 11.2h5.7"/></Icon>,
-            Search: <Icon><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>,
-            ArrowLeft: <Icon><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></Icon>,
-            Play: <Icon><polygon points="5 3 19 12 5 21 5 3"/></Icon>,
-            Code: <Icon><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></Icon>,
-            Link: <Icon><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></Icon>,
-            History: <Icon><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></Icon>,
-            X: <Icon><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>
+            LayoutDashboard: (props) => <IconBase {...props}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></IconBase>,
+            Workflow: (props) => <IconBase {...props}><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></IconBase>,
+            Box: (props) => <IconBase {...props}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></IconBase>,
+            Settings: (props) => <IconBase {...props}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></IconBase>,
+            Play: (props) => <IconBase {...props}><polygon points="5 3 19 12 5 21 5 3"/></IconBase>,
+            Plus: (props) => <IconBase {...props}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>,
+            Save: (props) => <IconBase {...props}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>,
+            ArrowLeft: (props) => <IconBase {...props}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></IconBase>,
+            Server: (props) => <IconBase {...props}><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></IconBase>,
+            GitBranch: (props) => <IconBase {...props}><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></IconBase>,
+            History: (props) => <IconBase {...props}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></IconBase>,
+            FileJson: (props) => <IconBase {...props}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12v1h1"/><path d="M10 18v-2h2"/><path d="M14 16v2"/></IconBase>,
+            TableProperties: (props) => <IconBase {...props}><path d="M15 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/></IconBase>,
+            Split: (props) => <IconBase {...props}><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></IconBase>,
+            Trash2: (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>,
+            X: (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>,
+            Database: (props) => <IconBase {...props}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></IconBase>,
+            Terminal: (props) => <IconBase {...props}><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></IconBase>,
+            ChevronUp: (props) => <IconBase {...props}><polyline points="18 15 12 9 6 15"/></IconBase>,
+            ChevronDown: (props) => <IconBase {...props}><polyline points="6 9 12 15 18 9"/></IconBase>
         };
 
-        // --- Data Definitions ---
-        
-        const BIZ_LINES = ['全部业务', '信贷审批', '反欺诈 (Fraud)', '交易风控'];
+        // --- Mock Data ---
+        const FLOWS = [
+            { id: 'F_AML_MAIN', name: '反洗钱主流程', business: 'AML', version: 'v2.0', status: 'Online', updated: '10分钟前', author: '王大锤' },
+            { id: 'F_LOAN_APPLY', name: '信贷准入流程', business: 'LOAN', version: 'v1.5', status: 'Online', updated: '2小时前', author: '李策略' },
+        ];
 
-        // 变量类型定义：严格对齐架构
-        const VAR_TYPES = {
-            REALTIME_REDIS: { 
-                id: 'REALTIME_REDIS', label: '实时变量 (Redis)', icon: Icons.Zap, 
-                color: 'text-amber-600 bg-amber-50 border-amber-200',
-                desc: '读取 Redis 中实时计算累积的特征',
-                codeLabel: 'Redis Key Pattern'
+        // Component Library
+        const COMPONENT_LIB = [
+            { 
+                type: 'BASIC', 
+                title: '基础组件', 
+                items: [
+                    { id: 'Start', name: '开始', icon: <Icons.Play size={16}/>, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
+                    { id: 'Branch', name: '条件判断', icon: <Icons.Split size={16}/>, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+                    { id: 'End', name: '结束', icon: <Icons.Box size={16}/>, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
+                ]
             },
-            OFFLINE_DB: { 
-                id: 'OFFLINE_DB', label: '离线变量 (MySQL)', icon: Icons.Database, 
-                color: 'text-slate-600 bg-slate-50 border-slate-200',
-                desc: '读取 MySQL/TiDB 中的 T-1 画像数据',
-                codeLabel: 'SQL Query'
-            },
-            EXTERNAL_API: { 
-                id: 'EXTERNAL_API', label: '外部变量 (API)', icon: Icons.Globe, 
-                color: 'text-blue-600 bg-blue-50 border-blue-200',
-                desc: '实时调用第三方 HTTP 接口',
-                codeLabel: 'API Path & Config'
-            },
-            DERIVED_SCRIPT: { 
-                id: 'DERIVED_SCRIPT', label: '衍生变量 (Script)', icon: Icons.Function, 
-                color: 'text-purple-600 bg-purple-50 border-purple-200',
-                desc: '基于已有的基础变量进行二次加工',
-                codeLabel: 'Calculation Logic (Groovy/Go)'
+            { 
+                type: 'DECISION', 
+                title: '决策组件', 
+                items: [
+                    { id: 'S_AML_001', name: '大额反洗钱阻断', icon: <Icons.FileJson size={16}/>, color: 'text-purple-600', bg: 'bg-white', border: 'border-slate-200' },
+                    { id: 'S_CRD_005', name: '信用评分卡A卡', icon: <Icons.TableProperties size={16}/>, color: 'text-orange-600', bg: 'bg-white', border: 'border-slate-200' },
+                    { id: 'S_RUL_007', name: '黑名单规则集', icon: <Icons.Database size={16}/>, color: 'text-red-600', bg: 'bg-white', border: 'border-slate-200' },
+                ]
             }
-        };
-
-        // 模拟数据源 (Part 1 的产物)
-        const MOCK_SOURCES = [
-            { id: 'SRC_001', name: '实时特征库 (Redis)', type: 'REDIS', status: 'Active' },
-            { id: 'SRC_002', name: '离线数仓 (MySQL)', type: 'DB', status: 'Active' },
-            { id: 'SRC_003', name: '征信中心 (HTTP)', type: 'HTTP', status: 'Active' },
         ];
 
-        // 模拟变量数据
-        const MOCK_VARS = [
-            { id: 'V_001', name: 'user_1h_amt_sum', cnName: '用户近1小时累计金额', type: 'REALTIME_REDIS', biz: '反欺诈 (Fraud)', sourceId: 'SRC_001', content: 'fraud:u:{uid}:1h:sum', status: 'Active', version: 'v1.5' },
-            { id: 'V_002', name: 'user_30d_avg_amt', cnName: '用户近30日日均金额', type: 'OFFLINE_DB', biz: '信贷审批', sourceId: 'SRC_002', content: 'SELECT avg_amt FROM user_profile WHERE uid = ?', status: 'Active', version: 'v2.0' },
-            { id: 'V_003', name: 'ext_risk_score', cnName: '第三方风控评分', type: 'EXTERNAL_API', biz: '信贷审批', sourceId: 'SRC_003', content: '/v2/query/score', status: 'Testing', version: 'v1.0' },
-            { id: 'V_004', name: 'burst_ratio', cnName: '突发大额系数', type: 'DERIVED_SCRIPT', biz: '反欺诈 (Fraud)', sourceId: null, content: 'return V_001 / V_002', status: 'Draft', version: 'v0.1' },
-        ];
-
-        // --- Sidebar Component ---
-        const Sidebar = () => (
-            <div className="w-64 bg-white h-screen border-r border-slate-200 flex flex-col z-10 shrink-0">
-                <div className="h-16 flex items-center px-6 border-b border-slate-100">
+        // 1. Sidebar (Main Navigation)
+        const Sidebar = ({active, setActive}) => (
+            <div className="w-64 bg-white border-r border-slate-200 flex flex-col z-20 shrink-0 h-full">
+                <div className="h-16 flex items-center px-6 border-b border-slate-100 shrink-0">
                     <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white mr-3 shadow-md">
-                        {Icons.Server}
+                        <Icons.Server size={20}/>
                     </div>
                     <span className="font-bold text-slate-800 tracking-tight">风控决策引擎</span>
                 </div>
-                <div className="p-4">
-                    <div className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">决策基石</div>
-                    <div className="space-y-1">
-                        <div className="px-4 py-2.5 rounded-lg flex items-center cursor-pointer text-slate-600 hover:bg-slate-50 transition">
-                            <span className="mr-3">{Icons.Database}</span> 数据源管理
+                <div className="p-4 space-y-1 overflow-y-auto flex-1">
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">功能导航</div>
+                    {[
+                        // REMOVED: Dashboard item
+                        { id: 'datasource', icon: <Icons.Database size={18}/>, label: '数据源管理' },
+                        { id: 'variable', icon: <Icons.Settings size={18}/>, label: '变量中心' },
+                        { id: 'component', icon: <Icons.Box size={18}/>, label: '决策组件' },
+                        { id: 'flow', icon: <Icons.Workflow size={18}/>, label: '决策流编排', active: true },
+                        { id: 'backtest', icon: <Icons.History size={18}/>, label: '回测中心' },
+                    ].map(item => (
+                        <div 
+                            key={item.id}
+                            className={`px-4 py-2.5 rounded-lg flex items-center cursor-pointer transition ${
+                                item.active 
+                                    ? 'bg-blue-50 text-blue-600 font-medium' 
+                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            }`}
+                        >
+                            <span className={`mr-3 ${item.active ? 'text-blue-600' : 'text-slate-400'}`}>{item.icon}</span>
+                            {item.label}
                         </div>
-                        <div className="px-4 py-2.5 rounded-lg flex items-center cursor-pointer sidebar-active">
-                            <span className="mr-3">{Icons.Settings}</span> 变量中心
+                    ))}
+                </div>
+            </div>
+        );
+
+        // 2. Flow List View
+        const FlowList = ({ onSelect }) => (
+            <div className="flex-1 bg-slate-50 p-8 overflow-y-auto h-full">
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">决策流列表</h1>
+                            <p className="text-slate-500 mt-1 text-sm">管理所有风控策略流程的版本与状态。</p>
                         </div>
+                        <button onClick={() => onSelect({ id: 'NEW', name: '新建决策流' })} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition font-medium text-sm">
+                            <Icons.Plus size={16}/> 新建决策流
+                        </button>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th className="px-6 py-4">决策流名称 / ID</th>
+                                    <th className="px-6 py-4">业务板块</th>
+                                    <th className="px-6 py-4">状态</th>
+                                    <th className="px-6 py-4">最后更新</th>
+                                    <th className="px-6 py-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {FLOWS.map(flow => (
+                                    <tr key={flow.id} className="hover:bg-slate-50 transition group">
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-slate-700 flex items-center gap-2">{flow.name}</div>
+                                            <div className="text-xs font-mono text-slate-400 mt-0.5">{flow.id}</div>
+                                        </td>
+                                        <td className="px-6 py-4"><span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-100">{flow.business}</span></td>
+                                        <td className="px-6 py-4">
+                                            <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>{flow.status}</span>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-500 text-xs">{flow.updated}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button onClick={() => onSelect(flow)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded font-medium text-xs">编排</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         );
 
-        // --- Editor Component ---
-        const VariableEditor = ({ variable, onBack, onUpdateStatus }) => {
-            const [isTesting, setIsTesting] = useState(false);
-            const [testResult, setTestResult] = useState(null);
-            const [showDiff, setShowDiff] = useState(false);
+        // 3. Flow Editor (Core)
+        const FlowEditor = ({ flow, onBack }) => {
+            // Updated Nodes for more complex logic
+            const [nodes, setNodes] = useState([
+                { id: 'start', type: 'Start', x: 400, y: 50, label: '开始' },
+                { id: 'n_bw', type: 'S_RUL_007', x: 400, y: 150, label: '黑名单规则校验' },
+                { id: 'br_bw', type: 'Branch', x: 400, y: 260, label: '命中黑名单?' },
+                { id: 'end_rej', type: 'End', x: 650, y: 260, label: '直接拒绝' },
+                { id: 'n_score', type: 'S_CRD_005', x: 250, y: 380, label: '信用评分A卡' },
+                { id: 'br_score', type: 'Branch', x: 250, y: 500, label: '评分 > 600?' },
+                { id: 'end_pass', type: 'End', x: 100, y: 620, label: '自动通过' },
+                { id: 'end_man', type: 'End', x: 400, y: 620, label: '人工复审' }
+            ]);
             
-            const typeConfig = VAR_TYPES[variable.type];
-            const sourceInfo = MOCK_SOURCES.find(s => s.id === variable.sourceId);
+            // Updated Edges with logic labels
+            const [edges, setEdges] = useState([
+                { from: 'start', to: 'n_bw' },
+                { from: 'n_bw', to: 'br_bw' },
+                { from: 'br_bw', to: 'end_rej', label: 'YES (命中)' },
+                { from: 'br_bw', to: 'n_score', label: 'NO (未命中)' },
+                { from: 'n_score', to: 'br_score' },
+                { from: 'br_score', to: 'end_pass', label: 'YES (优质)' },
+                { from: 'br_score', to: 'end_man', label: 'NO (风险)' }
+            ]);
 
-            const handleRunTest = () => {
-                setIsTesting(true);
-                setTestResult(null);
-                // 模拟网络延迟
-                setTimeout(() => {
-                    setIsTesting(false);
-                    setTestResult({
-                        success: true,
-                        latency: '12ms',
-                        value: variable.type === 'DERIVED_SCRIPT' ? 4.5 : 12000.50,
-                        source: sourceInfo?.name || 'Engine Calculation',
-                        log: 'Successfully fetched from source.'
-                    });
-                }, 1000);
+            const [selectedNode, setSelectedNode] = useState(null); 
+            const [isPanelOpen, setIsPanelOpen] = useState(true);
+            const [draggingNode, setDraggingNode] = useState(null);
+            
+            // I/O State
+            const [globalInputs, setGlobalInputs] = useState([
+                { id: 1, name: 'amount', type: 'Float', desc: '交易金额' },
+                { id: 2, name: 'currency', type: 'String', desc: '币种' },
+                { id: 3, name: 'user_id', type: 'String', desc: '用户ID' }
+            ]);
+            const [globalOutputs, setGlobalOutputs] = useState([
+                { id: 1, name: 'decision', type: 'String', desc: '最终决策' },
+                { id: 2, name: 'risk_score', type: 'Int', desc: '风险评分' }
+            ]);
+
+            // Backtest State
+            const [isTestPanelOpen, setIsTestPanelOpen] = useState(false);
+            const [testInput, setTestInput] = useState('{\n  "amount": 50000,\n  "currency": "CNY",\n  "user_id": "U882910"\n}');
+            const [testResult, setTestResult] = useState(null);
+            const [isTesting, setIsTesting] = useState(false);
+
+            // Drag Handlers
+            const handleCanvasDrop = (e) => {
+                e.preventDefault();
+                const type = e.dataTransfer.getData('nodeType');
+                const label = e.dataTransfer.getData('nodeLabel');
+                if (type) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const newNode = {
+                        id: `node_${Date.now()}`,
+                        type,
+                        label,
+                        x: e.clientX - rect.left - 80,
+                        y: e.clientY - rect.top - 32
+                    };
+                    setNodes([...nodes, newNode]);
+                    setSelectedNode(newNode);
+                    setIsPanelOpen(true);
+                }
             };
 
-            // 渲染不同类型的编辑器内容
-            const renderCodePreview = () => {
-                if (variable.type === 'REALTIME_REDIS') {
-                    return (
-                        <>
-                            <span className="token-comment">// Redis Key Pattern</span><br/>
-                            <span className="token-keyword">GET</span> <span className="token-str">"{variable.content}"</span>
-                        </>
-                    );
+            const handleNodeMove = useCallback((e) => {
+                if (draggingNode) {
+                    const canvasEl = document.querySelector('.canvas-bg');
+                    if(!canvasEl) return;
+                    const rect = canvasEl.getBoundingClientRect();
+                    setNodes(prev => prev.map(n => 
+                        n.id === draggingNode.id ? { 
+                            ...n, 
+                            x: e.clientX - rect.left - draggingNode.offsetX, 
+                            y: e.clientY - rect.top - draggingNode.offsetY 
+                        } : n
+                    ));
                 }
-                if (variable.type === 'OFFLINE_DB') {
-                    return (
-                        <>
-                            <span className="token-keyword">SELECT</span> avg_amt <span className="token-keyword">FROM</span> user_profile <br/>
-                            <span className="token-keyword">WHERE</span> uid = <span className="token-num">?</span>
-                        </>
-                    );
+            }, [draggingNode]);
+
+            useEffect(() => {
+                if (draggingNode) {
+                    window.addEventListener('mousemove', handleNodeMove);
+                    window.addEventListener('mouseup', () => setDraggingNode(null));
                 }
-                if (variable.type === 'DERIVED_SCRIPT') {
-                    return (
-                        <>
-                            <span className="token-comment">// Groovy Script</span><br/>
-                            <span className="token-keyword">def</span> v1 = Context.get(<span className="token-str">"user_1h_amt_sum"</span>)<br/>
-                            <span className="token-keyword">def</span> v2 = Context.get(<span className="token-str">"user_30d_avg_amt"</span>)<br/>
-                            <span className="token-keyword">if</span> (v2 == 0) <span className="token-keyword">return</span> 0<br/>
-                            <span className="token-keyword">return</span> v1 / v2
-                        </>
-                    );
+                return () => {
+                    window.removeEventListener('mousemove', handleNodeMove);
+                    window.removeEventListener('mouseup', () => setDraggingNode(null));
                 }
-                return <span className="token-str">"{variable.content}"</span>;
+            }, [draggingNode, handleNodeMove]);
+
+            // I/O Handlers
+            const handleAddParam = (type) => {
+                const newParam = { id: Date.now(), name: 'new_param', type: 'String', desc: '' };
+                if (type === 'IN') setGlobalInputs([...globalInputs, newParam]);
+                else setGlobalOutputs([...globalOutputs, newParam]);
+            };
+
+            const handleDeleteParam = (type, id) => {
+                if (type === 'IN') setGlobalInputs(globalInputs.filter(p => p.id !== id));
+                else setGlobalOutputs(globalOutputs.filter(p => p.id !== id));
+            };
+
+            const handleUpdateParam = (type, id, field, value) => {
+                const updater = list => list.map(p => p.id === id ? { ...p, [field]: value } : p);
+                if (type === 'IN') setGlobalInputs(updater(globalInputs));
+                else setGlobalOutputs(updater(globalOutputs));
+            };
+
+            // Test Execution Handler
+            const executeTest = () => {
+                setIsTesting(true);
+                setTestResult(null);
+                setTimeout(() => {
+                    try {
+                        const inputData = JSON.parse(testInput);
+                        const result = {
+                            traceId: "T_" + Math.random().toString(36).substr(2, 9).toUpperCase(),
+                            timestamp: new Date().toISOString(),
+                            status: "SUCCESS",
+                            executionTime: "86ms",
+                            outputs: {
+                                decision: inputData.amount > 10000 ? "MANUAL_REVIEW" : "APPROVE",
+                                riskScore: Math.floor(Math.random() * (750 - 550) + 550),
+                                hitRules: []
+                            }
+                        };
+                        setTestResult(result);
+                    } catch (e) {
+                        setTestResult({ error: "Invalid JSON Input" });
+                    }
+                    setIsTesting(false);
+                }, 800);
             };
 
             return (
-                <div className="flex flex-col h-full bg-slate-50 relative animate-fade-in">
+                <div className="flex flex-1 h-full w-full bg-slate-50 text-slate-800 overflow-hidden flex-col">
                     {/* Header */}
-                    <div className="h-16 border-b border-slate-200 flex justify-between items-center px-6 shrink-0 bg-white shadow-sm z-10">
+                    <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-40 shadow-sm shrink-0">
                         <div className="flex items-center gap-4">
-                            <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition">{Icons.ArrowLeft}</button>
-                            <div>
-                                <div className="flex items-center gap-3">
-                                    <h2 className="text-lg font-bold text-slate-800">{variable.name}</h2>
-                                    <span className={`px-2 py-0.5 rounded text-xs font-medium border flex items-center gap-1 ${typeConfig.color}`}>
-                                        {typeConfig.icon} {typeConfig.label}
-                                    </span>
-                                </div>
-                                <div className="text-xs text-slate-500 mt-0.5">{variable.cnName} · {variable.biz}</div>
+                            <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition"><Icons.ArrowLeft size={20}/></button>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-lg text-slate-800">{flow.name}</span>
+                                <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-mono">{flow.version}</span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                                <label className="text-xs font-bold text-slate-500">状态:</label>
-                                <select 
-                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                                    value={variable.status}
-                                    onChange={(e) => onUpdateStatus(variable.id, e.target.value)}
-                                >
-                                    <option value="Draft">Draft (草稿)</option>
-                                    <option value="Testing">Testing (测试中)</option>
-                                    <option value="Active">Active (已生效)</option>
-                                    <option value="Disabled">Disabled (已停用)</option>
-                                </select>
-                                <span className={`w-2 h-2 rounded-full ${
-                                    variable.status === 'Active' ? 'bg-green-500' : 
-                                    variable.status === 'Testing' ? 'bg-blue-500' : 'bg-slate-400'
-                                }`}></span>
-                            </div>
-                            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition">
-                                保存配置
+                        <div className="flex items-center gap-3">
+                            <button 
+                                onClick={() => setIsTestPanelOpen(!isTestPanelOpen)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs transition font-bold border ${isTestPanelOpen ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+                            >
+                                <Icons.Terminal size={14}/> 模拟回测
+                            </button>
+                            <div className="h-6 w-px bg-slate-200 mx-1"></div>
+                            <button className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs transition text-white font-bold shadow-sm">
+                                <Icons.Save size={14}/> 发布上线
                             </button>
                         </div>
                     </div>
 
-                    {/* Content Grid */}
-                    <div className="flex-1 overflow-hidden flex p-6 gap-6">
-                        {/* LEFT: Config */}
-                        <div className="flex-1 flex flex-col gap-6 overflow-y-auto">
-                            {/* Dependency Card */}
-                            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-                                    {Icons.Link} <span className="text-slate-400">上游数据依赖</span>
-                                </h3>
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-1">
-                                        <label className="text-xs font-semibold text-slate-500 mb-1.5 block">绑定数据源</label>
-                                        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                                            {sourceInfo ? (
-                                                <>
-                                                    <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 ${sourceInfo.type === 'REDIS' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                        {sourceInfo.type === 'REDIS' ? Icons.Zap : Icons.Database}
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-sm font-bold text-slate-700">{sourceInfo.name}</div>
-                                                        <div className="text-xs text-slate-400 font-mono">{sourceInfo.id}</div>
-                                                    </div>
-                                                    <div className="ml-auto text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100">
-                                                        已连接
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="text-sm text-slate-400 italic py-1">此变量为纯计算衍生，无直接物理数据源</div>
-                                            )}
+                    <div className="flex flex-1 overflow-hidden relative">
+                        {/* Editor Sidebar (Component Palette) */}
+                        <div className="w-64 bg-white border-r border-slate-200 flex flex-col z-30 shrink-0 h-full">
+                            <div className="flex-1 overflow-y-auto py-2">
+                                {COMPONENT_LIB.map((group, idx) => (
+                                    <div key={idx} className="mb-6 px-4">
+                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 mt-4 flex items-center gap-2">
+                                            {group.type === 'BASIC' ? <Icons.GitBranch size={14}/> : <Icons.Box size={14}/>}
+                                            {group.title}
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {group.items.map(item => (
+                                                <div 
+                                                    key={item.id} 
+                                                    className={`p-3 rounded-lg border flex items-center gap-3 cursor-move hover:shadow-md transition select-none ${item.bg} ${item.border}`}
+                                                    draggable
+                                                    onDragStart={(e) => {
+                                                        e.dataTransfer.setData('nodeType', item.id);
+                                                        e.dataTransfer.setData('nodeLabel', item.name);
+                                                    }}
+                                                >
+                                                    <div className={`${item.color}`}>{item.icon}</div>
+                                                    <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            {/* Code Editor */}
-                            <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col min-h-[300px]">
-                                <div className="px-4 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                    <span className="text-xs font-bold text-slate-500 flex items-center gap-2">{Icons.Code} {typeConfig.codeLabel}</span>
-                                </div>
-                                <div className="flex-1 bg-[#1e1e1e] p-4 font-mono text-sm text-slate-300 overflow-auto rounded-b-xl">
-                                    {renderCodePreview()}
-                                </div>
+                                ))}
                             </div>
                         </div>
 
-                        {/* RIGHT: Tools */}
-                        <div className="w-80 flex flex-col gap-6 shrink-0">
-                            {/* Test Console */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
-                                <div className="p-4 border-b border-slate-100">
-                                    <h3 className="text-sm font-bold text-slate-700">在线试运行</h3>
-                                    <p className="text-xs text-slate-400 mt-1">模拟入参验证计算结果</p>
-                                </div>
-                                <div className="p-4 flex-1 flex flex-col gap-4 overflow-y-auto">
-                                    <div>
-                                        <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Mock 入参 (JSON)</label>
-                                        <textarea 
-                                            className="w-full h-24 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                            defaultValue={`{\n  "uid": "U10086",\n  "amount": 5000\n}`}
-                                        ></textarea>
-                                    </div>
-                                    <button 
-                                        onClick={handleRunTest}
-                                        disabled={isTesting}
-                                        className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition ${isTesting ? 'bg-slate-100 text-slate-400 cursor-wait' : 'bg-green-600 text-white hover:bg-green-700 shadow-md'}`}
-                                    >
-                                        {isTesting ? '计算中...' : <>{Icons.Play} 立即运行</>}
-                                    </button>
+                        {/* Canvas */}
+                        <div 
+                            className="flex-1 relative overflow-hidden canvas-bg"
+                            onClick={() => { setSelectedNode(null); setIsPanelOpen(true); }}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={handleCanvasDrop}
+                        >
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                                    </marker>
+                                </defs>
+                                {edges.map((edge, i) => {
+                                    const n1 = nodes.find(n => n.id === edge.from);
+                                    const n2 = nodes.find(n => n.id === edge.to);
+                                    if(!n1 || !n2) return null;
+                                    const x1 = n1.x + 80, y1 = n1.y + 64;
+                                    const x2 = n2.x + 80, y2 = n2.y;
+                                    
+                                    // Calculate midpoint for labels
+                                    const midX = (x1 + x2) / 2;
+                                    const midY = (y1 + y2) / 2;
+                                    
+                                    return (
+                                        <g key={i}>
+                                            <path d={`M ${x1} ${y1} C ${x1} ${y1 + 50}, ${x2} ${y2 - 50}, ${x2} ${y2}`} stroke="#94a3b8" strokeWidth="2" fill="none" markerEnd="url(#arrowhead)"/>
+                                            {edge.label && (
+                                                <g>
+                                                    <rect x={midX - 30} y={midY - 10} width={60} height={20} rx={4} fill="white" stroke="#e2e8f0" />
+                                                    <text x={midX} y={midY + 4} textAnchor="middle" fontSize={10} fill="#64748b" fontWeight="bold">{edge.label}</text>
+                                                </g>
+                                            )}
+                                        </g>
+                                    );
+                                })}
+                            </svg>
 
-                                    {testResult && (
-                                        <div className="animate-fade-in bg-slate-900 rounded-lg p-3 font-mono text-xs overflow-hidden">
-                                            <div className="flex justify-between border-b border-slate-700 pb-2 mb-2">
-                                                <span className="text-slate-400">Result</span>
-                                                <span className="text-green-400">{testResult.latency}</span>
+                            {nodes.map(node => (
+                                <div 
+                                    key={node.id}
+                                    style={{ left: node.x, top: node.y, width: '160px' }}
+                                    className={`absolute z-10 rounded-lg border bg-white p-3 cursor-grab flow-node ${selectedNode?.id === node.id ? 'selected' : 'border-slate-200'}`}
+                                    onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedNode(node);
+                                        const r = e.currentTarget.getBoundingClientRect();
+                                        setDraggingNode({ id: node.id, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top });
+                                    }}
+                                >
+                                    <div className="flex items-center gap-2 mb-2 pointer-events-none">
+                                        <div className={node.type === 'Start' ? 'text-green-500' : node.type === 'Branch' ? 'text-yellow-500' : node.type === 'End' ? 'text-slate-500' : 'text-purple-500'}>
+                                            {node.type === 'Start' ? <Icons.Play size={14}/> : node.type === 'Branch' ? <Icons.Split size={14}/> : node.type === 'End' ? <Icons.Box size={14}/> : <Icons.FileJson size={14}/>}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-700 truncate">{node.label}</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-mono truncate pointer-events-none">ID: {node.id}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Right Panel */}
+                        {isPanelOpen && (
+                            <div className="w-80 bg-white border-l border-slate-200 flex flex-col z-30 shadow-xl shrink-0 overflow-hidden h-full">
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                    <span className="font-bold text-sm text-slate-700">{selectedNode ? '节点属性' : '全局配置'}</span>
+                                    <button onClick={() => setIsPanelOpen(false)}><Icons.X size={14} className="text-slate-400"/></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                                    {selectedNode ? (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-500 mb-1 block">节点名称</label>
+                                                <input className="form-input" value={selectedNode.label} onChange={(e) => {
+                                                    setNodes(nodes.map(n => n.id === selectedNode.id ? { ...n, label: e.target.value } : n));
+                                                    setSelectedNode({ ...selectedNode, label: e.target.value });
+                                                }}/>
                                             </div>
-                                            <div className="text-green-400 font-bold text-lg mb-1">{testResult.value}</div>
-                                            <div className="text-slate-500 text-[10px] truncate">// Src: {testResult.source}</div>
+                                            <div className="pt-4 border-t border-slate-100">
+                                                <button onClick={() => { setNodes(nodes.filter(n => n.id !== selectedNode.id)); setSelectedNode(null); }} className="w-full py-2 text-red-600 hover:bg-red-50 rounded text-xs font-bold border border-red-100">删除节点</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-6">
+                                            <div className="p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-700 mb-2">
+                                                当前未选中节点。正在编辑决策流全局属性。
+                                            </div>
+                                            {/* Global I/O Config */}
+                                            {['IN', 'OUT'].map(ioType => (
+                                                <div key={ioType}>
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                                                            {ioType === 'IN' ? <Icons.ArrowLeft size={12} className="rotate-180"/> : <Icons.ArrowLeft size={12}/>}
+                                                            {ioType === 'IN' ? '输入参数 (Input)' : '输出参数 (Output)'}
+                                                        </label>
+                                                        <button onClick={() => handleAddParam(ioType)} className="text-[10px] text-blue-600 font-bold hover:underline">+ 添加参数</button>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {(ioType === 'IN' ? globalInputs : globalOutputs).map(param => (
+                                                            <div key={param.id} className="bg-slate-50 border border-slate-200 rounded p-2 group hover:border-blue-300 transition">
+                                                                <div className="flex gap-2 mb-2">
+                                                                    <input 
+                                                                        className="flex-1 bg-white border border-slate-300 rounded px-1.5 py-1 text-xs font-mono" 
+                                                                        value={param.name}
+                                                                        placeholder="参数名"
+                                                                        onChange={(e) => handleUpdateParam(ioType, param.id, 'name', e.target.value)}
+                                                                    />
+                                                                    <select 
+                                                                        className="w-20 bg-white border border-slate-300 rounded px-1 py-1 text-[10px]"
+                                                                        value={param.type}
+                                                                        onChange={(e) => handleUpdateParam(ioType, param.id, 'type', e.target.value)}
+                                                                    >
+                                                                        <option>String</option>
+                                                                        <option>Float</option>
+                                                                        <option>Int</option>
+                                                                        <option>Boolean</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div className="flex gap-2 items-center">
+                                                                    <input 
+                                                                        className="flex-1 bg-transparent border-none text-[10px] text-slate-500 placeholder-slate-400 focus:ring-0 px-0 py-0"
+                                                                        value={param.desc}
+                                                                        placeholder="描述..."
+                                                                        onChange={(e) => handleUpdateParam(ioType, param.id, 'desc', e.target.value)}
+                                                                    />
+                                                                    <button 
+                                                                        onClick={() => handleDeleteParam(ioType, param.id)}
+                                                                        className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                                                                    >
+                                                                        <Icons.Trash2 size={12}/>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {(ioType === 'IN' ? globalInputs : globalOutputs).length === 0 && (
+                                                            <div className="text-[10px] text-slate-400 text-center py-2 border border-dashed border-slate-200 rounded">暂无定义</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
                             </div>
+                        )}
+                    </div>
 
-                            {/* Version History */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-48 flex flex-col">
-                                <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-                                    <h3 className="text-xs font-bold text-slate-500">版本历史</h3>
+                    {/* Bottom Test Panel */}
+                    <div className={`w-full bg-white border-t border-slate-200 z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] flex flex-col terminal-panel absolute bottom-0 left-0 right-0 ${isTestPanelOpen ? 'h-72' : 'h-0'}`}>
+                        <div className="h-10 border-b border-slate-100 flex items-center justify-between px-4 bg-slate-50 shrink-0">
+                            <div className="flex items-center gap-2">
+                                <Icons.Terminal size={16} className="text-slate-500"/>
+                                <span className="text-xs font-bold text-slate-700">模拟回测控制台</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={executeTest} disabled={isTesting} className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition ${isTesting ? 'bg-slate-100 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                                    {isTesting ? '执行中...' : <><Icons.Play size={12}/> 执行测试</>}
+                                </button>
+                                <button onClick={() => setIsTestPanelOpen(false)} className="p-1 hover:bg-slate-200 rounded text-slate-500"><Icons.ChevronDown size={16}/></button>
+                            </div>
+                        </div>
+                        <div className="flex-1 flex overflow-hidden">
+                            <div className="w-1/2 border-r border-slate-200 flex flex-col">
+                                <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 text-[10px] text-slate-500 font-bold uppercase">Input (JSON)</div>
+                                <textarea 
+                                    className="flex-1 w-full p-4 font-mono text-xs text-slate-700 resize-none outline-none focus:bg-slate-50 transition"
+                                    value={testInput}
+                                    onChange={(e) => setTestInput(e.target.value)}
+                                    spellCheck="false"
+                                ></textarea>
+                            </div>
+                            <div className="w-1/2 flex flex-col bg-slate-50/50">
+                                <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 text-[10px] text-slate-500 font-bold uppercase flex justify-between">
+                                    <span>Result</span>
+                                    {testResult && <span className="text-emerald-600">Finished in {testResult.executionTime}</span>}
                                 </div>
-                                <div className="overflow-y-auto">
-                                    {[variable.version, 'v1.0', 'v0.9'].map((v, i) => (
-                                        <div key={`${v}-${i}`} className="flex justify-between items-center px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 cursor-pointer" onClick={() => setShowDiff(true)}>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${i===0 ? 'bg-green-500' : 'bg-slate-300'}`}></span>
-                                                <span className="text-xs font-bold text-slate-700 font-mono">{v}</span>
-                                            </div>
-                                            <span className="text-[10px] text-blue-600 hover:underline">查看代码</span>
+                                <div className="flex-1 p-4 font-mono text-xs overflow-auto">
+                                    {isTesting ? (
+                                        <div className="flex items-center gap-2 text-slate-400 animate-pulse">
+                                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div> 正在模拟决策流执行...
                                         </div>
-                                    ))}
+                                    ) : testResult ? (
+                                        <pre className="text-slate-700">{JSON.stringify(testResult, null, 2)}</pre>
+                                    ) : (
+                                        <div className="text-slate-400 italic">点击“执行测试”查看结果...</div>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    {/* Diff Modal */}
-                    {showDiff && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowDiff(false)}>
-                            <div className="bg-white rounded-xl shadow-2xl w-[600px] overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
-                                <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
-                                    <h3 className="font-bold text-slate-800">版本差异对比 ({variable.version} vs Previous)</h3>
-                                    <button onClick={() => setShowDiff(false)} className="text-slate-400 hover:text-slate-600">{Icons.X}</button>
-                                </div>
-                                <div className="p-4 bg-[#1e1e1e] font-mono text-xs text-slate-300 h-64 overflow-auto">
-                                    <div className="flex gap-4 mb-2 opacity-50"><span className="w-6 text-right select-none">1</span> <span>// Previous Logic</span></div>
-                                    <div className="flex gap-4 mb-2 text-red-400 bg-red-900/20"><span className="w-6 text-right select-none">-</span> <span>return v1 / 100</span></div>
-                                    <div className="flex gap-4 mb-2 text-green-400 bg-green-900/20"><span className="w-6 text-right select-none">+</span> <span>return v1 / v2</span></div>
-                                    <div className="flex gap-4 mb-2 opacity-50"><span className="w-6 text-right select-none">4</span> <span>// End</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         };
 
-        // --- Main App ---
+        // 4. Main App
         const App = () => {
-            const [view, setView] = useState('LIST'); // LIST, EDITOR
-            const [selectedBiz, setSelectedBiz] = useState('全部业务');
-            const [variables, setVariables] = useState(MOCK_VARS);
-            const [editingVarId, setEditingVarId] = useState(null);
+            const [view, setView] = useState('LIST');
+            const [selectedFlow, setSelectedFlow] = useState(null);
 
-            const activeVar = variables.find(v => v.id === editingVarId);
-
-            const handleUpdateStatus = (id, newStatus) => {
-                setVariables(vars => vars.map(v => v.id === id ? {...v, status: newStatus} : v));
+            const handleSelect = (flow) => {
+                setSelectedFlow(flow);
+                setView('EDITOR');
             };
 
-            const filteredVars = variables.filter(v => selectedBiz === '全部业务' || v.biz === selectedBiz);
-
             return (
-                <div className="flex h-screen w-screen bg-slate-50 overflow-hidden text-slate-800">
+                <div className="flex h-screen w-screen overflow-hidden">
+                    {/* Main Navigation Sidebar */}
                     <Sidebar />
                     
-                    <div className="flex-1 flex flex-col h-screen overflow-hidden">
+                    {/* Main Content Area */}
+                    <div className="flex-1 h-screen overflow-hidden flex flex-col">
                         {view === 'LIST' ? (
-                            <>
-                                {/* List Header */}
-                                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 shrink-0">
-                                    <div className="font-bold text-lg text-slate-800">变量资产中心</div>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{Icons.Search}</span>
-                                        <input type="text" placeholder="搜索变量..." className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-blue-200 outline-none transition" />
-                                    </div>
-                                </header>
-
-                                {/* Filters */}
-                                <div className="px-8 py-4 flex items-center gap-2 overflow-x-auto shrink-0">
-                                    {BIZ_LINES.map(biz => (
-                                        <button 
-                                            key={biz} 
-                                            onClick={() => setSelectedBiz(biz)}
-                                            className={`px-4 py-2 rounded-full text-sm font-medium transition whitespace-nowrap ${
-                                                selectedBiz === biz ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                                            }`}
-                                        >
-                                            {biz}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Table */}
-                                <div className="flex-1 overflow-y-auto px-8 pb-8">
-                                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                                                <tr>
-                                                    <th className="px-6 py-4">变量名称</th>
-                                                    <th className="px-6 py-4">加工类型</th>
-                                                    <th className="px-6 py-4">业务归属</th>
-                                                    <th className="px-6 py-4">状态</th>
-                                                    <th className="px-6 py-4 text-right">操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {filteredVars.map(v => {
-                                                    const typeConf = VAR_TYPES[v.type];
-                                                    return (
-                                                        <tr key={v.id} className="hover:bg-slate-50 transition group">
-                                                            <td className="px-6 py-4">
-                                                                <div className="font-bold text-slate-700">{v.cnName}</div>
-                                                                <div className="text-xs font-mono text-slate-400 mt-1">{v.name}</div>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${typeConf.color}`}>
-                                                                    {typeConf.icon} {typeConf.label}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded border border-slate-200">{v.biz}</span>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className={`w-2 h-2 rounded-full ${
-                                                                        v.status === 'Active' ? 'bg-green-500' : 
-                                                                        v.status === 'Testing' ? 'bg-blue-500' : 'bg-slate-400'
-                                                                    }`}></span>
-                                                                    <span className="text-slate-600 text-xs">{v.status}</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <button 
-                                                                    onClick={() => { setEditingVarId(v.id); setView('EDITOR'); }}
-                                                                    className="text-blue-600 hover:text-blue-800 font-medium text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition"
-                                                                >
-                                                                    管理
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                        {filteredVars.length === 0 && <div className="p-8 text-center text-slate-400">暂无数据</div>}
-                                    </div>
-                                </div>
-                            </>
+                            <FlowList onSelect={handleSelect} />
                         ) : (
-                            <VariableEditor 
-                                variable={activeVar} 
-                                onBack={() => setView('LIST')} 
-                                onUpdateStatus={handleUpdateStatus}
-                            />
+                            <FlowEditor flow={selectedFlow} onBack={() => setView('LIST')} />
                         )}
                     </div>
                 </div>
